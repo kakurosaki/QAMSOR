@@ -7,7 +7,6 @@ from train_arima import grid_search_arima, time_series_cv
 from forecast import forecast_population
 from statsmodels.tsa.arima.model import ARIMA 
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-import statsmodels.api as sm
 import warnings
 import numpy as np
 
@@ -17,22 +16,16 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 os.makedirs("Graphs", exist_ok=True)
 os.makedirs("datas", exist_ok=True)
 
-# ✅ Function added to handle residual diagnostics
 def residual_diagnostics(model):
     residuals = model.resid
-
     print("\n🔍 Residual Diagnostics:")
     print(residuals.describe())
-
+    
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     plot_acf(residuals, ax=axes[0])
     plot_pacf(residuals, ax=axes[1])
     plt.suptitle("ACF and PACF of Residuals")
     plt.tight_layout()
-    plt.show()
-
-    sm.qqplot(residuals, line='s')
-    plt.title("QQ Plot of Residuals")
     plt.show()
 
 # Auto-detect all country names
@@ -50,9 +43,8 @@ for country in countries:
         # Step 1: Load data
         df_country = load_population_data("Asian_Countries_Population.csv", country)
 
-        if df_country.empty or len(df_country) < 5:  # Ensure minimum data length
+        if df_country.empty or len(df_country) < 5:
             print(f"⚠️ Not enough data for {country}, skipping...")
-
             continue
 
         print(f"📊 {country} - Data Loaded: {df_country.shape}")
@@ -69,15 +61,12 @@ for country in countries:
             continue
 
         # Step 3: Train ARIMA Model using Grid Search
-        result = grid_search_arima(df_country["Population"])
-        print(f"grid_search_arima result: {result}")
-
-        # Unpack only if result is valid (i.e., both model and best_order are not None)
-        if result[0] is not None and result[1] is not None:
-            model, best_order = result
-            print(f"Best Order: {best_order}")
-        else:
-            print("No valid ARIMA model found.")
+        model, best_order = grid_search_arima(df_country["Population"])  # Now only unpacking 2 values
+        if model is None:
+            print(f"❌ No valid ARIMA model found for {country}")
+            continue
+            
+        print(f"Best Order: {best_order}")
 
         # Step 4: Check Residuals
         residual_diagnostics(model)

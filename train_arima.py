@@ -31,32 +31,19 @@ def grid_search_arima(series, max_p=5, max_d=2, max_q=5, max_P=2, max_Q=2, max_D
                 print(f"Error fitting ARIMA with params {(p, d, q, P, D, Q)}: {e}")
                 continue
 
-    if best_model is None:  # Handle the case where no model was found
+    if best_model is None:
         return None, None
     return best_model, best_order
 
-
 def time_series_cv(series, model_class, n_splits=5):
-    """
-    Perform cross-validation for time series data.
-
-    Args:
-    - series (pd.Series): Time series data.
-    - model_class (class): ARIMA or other model class.
-    - n_splits (int): Number of splits for cross-validation.
-
-    Returns:
-    - List of RMSE for each fold.
-    """
     tscv = TimeSeriesSplit(n_splits=n_splits)
     rmses = []
 
     for train_idx, test_idx in tscv.split(series):
         train, test = series[train_idx], series[test_idx]
-        model = model_class(order=(1, 1, 1))  # You can customize the order here
+        model = model_class(order=(1, 1, 1))
         model_fit = model.fit(train)
 
-        # Evaluate RMSE
         predictions = model_fit.predict(start=len(train), end=len(train) + len(test) - 1)
         rmse = np.sqrt(np.mean((predictions - test) ** 2))
         rmses.append(rmse)

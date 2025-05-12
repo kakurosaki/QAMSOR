@@ -237,49 +237,47 @@ from statsmodels.tsa.seasonal import STL
 
 def forecast_population(model, df_country, forecast_years, country_name):
     """
-    Forecast population using STL smoothing and a provided ARIMA model.
-    Generates and saves a combined plot with historical, smoothed, and forecasted data.
+    Your original function with explicit smoothing-forecast connection
     """
-    # Log transform for smoothing
-    df_country["Log_Pop"] = np.log(df_country["Population"])
-
-    # STL decomposition for smoothing (on log scale)
-    stl = STL(df_country["Log_Pop"], period=1)
+    # 1. Historical Data
+    historical = df_country["Population"]
+    
+    # 2. Smoothing (STL)
+    stl = STL(np.log(historical), period=1)
     res = stl.fit()
-    smoothed_log = res.trend
-
-    # Forecast in original scale using the model trained on (possibly differenced) data
-    forecast_log = model.predict(n_periods=len(forecast_years))
-    forecast = np.exp(forecast_log)
-
-    # Combine last smoothed value with forecast
-    last_year = df_country.index[-1]
+    smoothed = np.exp(res.trend)
+    
+    # 3. Forecasting 
+    forecast = model.forecast(steps=len(forecast_years))
+    
+    # Create smooth transition between last smoothed value and forecast
+    last_smoothed = smoothed.iloc[-1]
     forecast_index = pd.Index(forecast_years)
     smoothed_forecast = pd.concat([
-        pd.Series([np.exp(smoothed_log.dropna().iloc[-1])], index=[last_year]),
+        pd.Series([last_smoothed], index=[df_country.index[-1]]),
         pd.Series(forecast, index=forecast_index)
     ])
 
-    # Plotting
+    # Plotting (your original style)
     plt.figure(figsize=(10, 5))
-    plt.plot(df_country.index, df_country["Population"], label="Historical Data", color="blue", linewidth=2)
-    plt.plot(smoothed_log.index, np.exp(smoothed_log), label="Smoothed Data", color="green", linewidth=2)
-    plt.plot(smoothed_forecast.index, smoothed_forecast.values, label="Forecasted Data", color="red", linestyle="--", linewidth=2)
+    plt.plot(df_country.index, historical, label="Historical Data", color="blue", linewidth=2)
+    plt.plot(smoothed.index, smoothed, label="Smoothed Data", color="green", linewidth=2)
+    plt.plot(smoothed_forecast.index, smoothed_forecast, 
+             label="Forecasted Data", color="red", linestyle="--", linewidth=2)
 
     plt.xlabel("Year")
     plt.ylabel("Population")
-    plt.title(f"Population Forecast for {country_name} (2024–2035)")
+    plt.title(f"Population Forecast for {country_name}")
     plt.legend()
     plt.grid(True)
-    plt.tight_layout()
-
-    # Save the plot and CSV
-    plot_filename = f"Graphs/Forecast_Plot_{country_name}.png"
-    csv_filename = f"datas/{country_name}_Population.csv"
-    plt.savefig(plot_filename)
-    df_country.to_csv(csv_filename)  # Save original + smoothed population data
-    print(f"📈 Saved forecast plot: {plot_filename}")
-    print(f"📄 Saved processed CSV: {csv_filename}")
+    
+    # Save outputs
+    plt.savefig(f"Graphs/Forecast_Plot_{country_name}.png")
+    pd.DataFrame({
+        'Year': smoothed_forecast.index,
+        'Population': smoothed_forecast.values
+    }).to_csv(f"datas/{country_name}_Forecast.csv")
+    
     plt.close()
-
-    return pd.Series(forecast, index=forecast_index)
+    
+    return smoothed_forecast
