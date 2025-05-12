@@ -59,7 +59,7 @@ for country in countries:
 
         # Step 6: Forecast Future Population (2024–2035)
         forecast_years = list(range(2024, 2036))
-        forecasted_values = forecast_population(model, df_country, forecast_years, country)
+        forecasted_values = forecast_population(df_country, forecast_years, country)
 
         # Step 7: Save Forecast Results in 'datas' folder
         forecast_df = pd.DataFrame({"Year": forecast_years, "Forecasted Population": forecasted_values})
