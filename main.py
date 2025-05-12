@@ -5,13 +5,35 @@ from load_data import load_population_data, get_all_countries
 from stationarity_test import check_stationarity, apply_differencing
 from train_arima import grid_search_arima, time_series_cv
 from forecast import forecast_population
+from statsmodels.tsa.arima.model import ARIMA 
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+import statsmodels.api as sm
 import warnings
 import numpy as np
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Ensure directories exist
 os.makedirs("Graphs", exist_ok=True)
 os.makedirs("datas", exist_ok=True)
+
+# ✅ Function added to handle residual diagnostics
+def residual_diagnostics(model):
+    residuals = model.resid
+
+    print("\n🔍 Residual Diagnostics:")
+    print(residuals.describe())
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    plot_acf(residuals, ax=axes[0])
+    plot_pacf(residuals, ax=axes[1])
+    plt.suptitle("ACF and PACF of Residuals")
+    plt.tight_layout()
+    plt.show()
+
+    sm.qqplot(residuals, line='s')
+    plt.title("QQ Plot of Residuals")
+    plt.show()
 
 # Auto-detect all country names
 countries = get_all_countries("Asian_Countries_Population.csv")
@@ -30,6 +52,7 @@ for country in countries:
 
         if df_country.empty or len(df_country) < 5:  # Ensure minimum data length
             print(f"⚠️ Not enough data for {country}, skipping...")
+
             continue
 
         print(f"📊 {country} - Data Loaded: {df_country.shape}")
@@ -38,16 +61,23 @@ for country in countries:
         is_stationary, p_value = check_stationarity(df_country["Population"])
         if not is_stationary:
             print(f"📉 {country}'s data is non-stationary (p-value: {p_value:.5f}). Differencing needed.")
-            df_country["Population"] = apply_differencing(df_country["Population"], order=1)  # Apply first differencing
+            df_country["Population"] = apply_differencing(df_country["Population"], order=1)
+            print(f"🔍 Data after differencing for {country}: {df_country['Population'].head()}")
 
-        # Step 3: Train ARIMA Model using Grid Search
-        model, best_order = grid_search_arima(df_country["Population"])
-
-        if model is None:
-            print(f"⚠️ No valid model trained for {country}, skipping...")
+        if df_country["Population"].empty or len(df_country["Population"]) < 5:
+            print(f"⚠️ Not enough data after differencing for {country}, skipping...")
             continue
 
-        print(f"✅ ARIMA Model for {country} - Best Order: {best_order}")
+        # Step 3: Train ARIMA Model using Grid Search
+        result = grid_search_arima(df_country["Population"])
+        print(f"grid_search_arima result: {result}")
+
+        # Unpack only if result is valid (i.e., both model and best_order are not None)
+        if result[0] is not None and result[1] is not None:
+            model, best_order = result
+            print(f"Best Order: {best_order}")
+        else:
+            print("No valid ARIMA model found.")
 
         # Step 4: Check Residuals
         residual_diagnostics(model)
@@ -59,7 +89,7 @@ for country in countries:
 
         # Step 6: Forecast Future Population (2024–2035)
         forecast_years = list(range(2024, 2036))
-        forecasted_values = forecast_population(df_country, forecast_years, country)
+        forecasted_values = forecast_population(model, df_country, forecast_years, country)
 
         # Step 7: Save Forecast Results in 'datas' folder
         forecast_df = pd.DataFrame({"Year": forecast_years, "Forecasted Population": forecasted_values})

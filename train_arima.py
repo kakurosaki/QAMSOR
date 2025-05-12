@@ -3,19 +3,7 @@ import itertools
 import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 
-
 def grid_search_arima(series, max_p=5, max_d=2, max_q=5, max_P=2, max_Q=2, max_D=1):
-    """
-    Performs grid search to find the best ARIMA model parameters.
-
-    Args:
-    - series (pd.Series): Population data series.
-    - max_p, max_d, max_q: ARIMA parameters.
-
-    Returns:
-    - best_model: Fitted ARIMA model with the best parameters.
-    - best_order: The optimal order (p, d, q, P, D, Q).
-    """
     p_values = range(0, max_p + 1)
     d_values = range(0, max_d + 1)
     q_values = range(0, max_q + 1)
@@ -29,12 +17,9 @@ def grid_search_arima(series, max_p=5, max_d=2, max_q=5, max_P=2, max_Q=2, max_D
     for p, d, q in itertools.product(p_values, d_values, q_values):
         for P, D, Q in itertools.product(seasonal_p_values, seasonal_q_values):
             try:
-                # Fit ARIMA model with current parameters
-                model = ARIMA(series, order=(p, d, q),
-                              seasonal_order=(P, D, Q, 12))  # 12 for monthly seasonality (adjust if needed)
+                model = ARIMA(series, order=(p, d, q), seasonal_order=(P, D, Q, 12))
                 model_fit = model.fit()
 
-                # Evaluate using RMSE
                 predictions = model_fit.predict(start=len(series), end=len(series) + len(series) - 1)
                 rmse = np.sqrt(np.mean((predictions - series[-len(predictions):]) ** 2))
 
@@ -43,8 +28,11 @@ def grid_search_arima(series, max_p=5, max_d=2, max_q=5, max_P=2, max_Q=2, max_D
                     best_model = model_fit
                     best_order = (p, d, q, P, D, Q)
             except Exception as e:
+                print(f"Error fitting ARIMA with params {(p, d, q, P, D, Q)}: {e}")
                 continue
 
+    if best_model is None:  # Handle the case where no model was found
+        return None, None
     return best_model, best_order
 
 
