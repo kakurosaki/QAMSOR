@@ -1,283 +1,138 @@
-# import os
-# import matplotlib.pyplot as plt
-# import pandas as pd
-# import seaborn as sns
-
-# def forecast_population(model, df_country, forecast_years, country):
-#     """
-#     Forecasts the population for future years using the trained ARIMA model
-#     and visualizes both historical and forecasted trends.
-
-#     Args:
-#     - model: Trained ARIMA model.
-#     - df_country (pd.DataFrame): Historical population data.
-#     - forecast_years (list): List of years to forecast.
-#     - country (str): Country name.
-
-#     Returns:
-#     - List of forecasted population values.
-#     """
-#     try:
-#         # Forecast future population
-#         steps = len(forecast_years)
-#         forecast = model.forecast(steps=steps)
-
-#         # Ensure directory exists
-#         os.makedirs("Graphs", exist_ok=True)
-
-#         # Plot historical and forecasted population
-#         plt.figure(figsize=(12, 6))
-#         sns.lineplot(x=df_country.index, y=df_country["Population"], label="Historical Population", marker="o")
-#         sns.lineplot(x=forecast_years, y=forecast, label="Forecasted Population", marker="o", linestyle="--", color="red")
-
-#         plt.xlabel("Year")
-#         plt.ylabel("Population")
-#         plt.title(f"Population Forecast for {country}")
-#         plt.legend()
-#         plt.grid(True)
-#         plt.tight_layout()
-
-#         # Save the plot in 'Graphs' folder
-#         graph_path = f"Graphs/Forecast_Plot_{country}.png"
-#         plt.savefig(graph_path)
-#         print(f"📊 Saved forecast plot for {country} in 'Graphs/' folder.")
-
-#         plt.show()
-
-#         return forecast.tolist()
-
-#     except Exception as e:
-#         print(f"❌ Error forecasting {country}: {e}")
-#         return []
-
-
-# import matplotlib.pyplot as plt
-# import pandas as pd
-
-# def forecast_population(model, df_country, forecast_years, country_name):
-#     """
-#     Uses the trained ARIMA model to forecast population for future years and plots the results
-#     along with historical, smoothed, and forecasted data as a continuous trend.
-#     """
-#     # Generate forecasts
-#     forecast = model.forecast(steps=len(forecast_years))
-
-#     # Calculate smoothed data (moving average as example)
-#     smoothed = df_country["Population"].rolling(window=3, center=True).mean()
-
-#     # Get last valid smoothed value
-#     last_smoothed = smoothed.dropna().iloc[-1]
-
-#     # Create index for forecast
-#     forecast_index = pd.Index(forecast_years)
-
-#     # Concatenate smoothed and forecast for plotting
-#     smoothed_forecast = pd.concat([pd.Series([last_smoothed], index=[df_country.index[-1]]), pd.Series(forecast.values, index=forecast_index)])
-
-#     # Plotting
-#     plt.figure(figsize=(10, 5))
-
-#     # Plot historical
-#     plt.plot(df_country.index, df_country["Population"], label="Historical Data", color="gray", linewidth=2)
-
-#     # Plot smoothed
-#     plt.plot(smoothed.index, smoothed, label="Smoothed Data", color="red", linewidth=2)
-
-#     # Plot forecast from smoothed trend
-#     plt.plot(smoothed_forecast.index, smoothed_forecast.values, label="Forecasted Data", color="blue", linestyle="--", linewidth=2)
-
-#     # Labels and formatting
-#     plt.xlabel("Year")
-#     plt.ylabel("Population")
-#     plt.title(f"Population Forecast for {country_name} (2024–2034)")
-#     plt.legend()
-#     plt.grid(True)
-#     plt.tight_layout()
-
-#     # Save plot
-#     plot_filename = f"Forecast_Plot_{country_name}.png"
-#     plt.savefig(plot_filename)
-#     print(f"📊 Saved forecast plot for {country_name} as {plot_filename}")
-
-#     # Show plot
-#     plt.show()
-
-#     return forecast
-
-
-
-
-# import matplotlib.pyplot as plt
-# import pandas as pd
-# import numpy as np
-# from statsmodels.tsa.seasonal import STL
-# from pmdarima import auto_arima
-
-# def forecast_population(df_country, forecast_years, country_name):
-#     """
-#     Forecast population using STL, log-transform, and auto_arima.
-#     Returns forecast and generates a combined plot with historical, smoothed, and forecasted data.
-#     """
-#     # Log transform to stabilize variance
-#     df_country["Log_Pop"] = np.log(df_country["Population"])
-#     df_country["Diff_Pop"] = df_country["Log_Pop"].diff().dropna()
-
-
-#     # STL decomposition for smoothing
-#     stl = STL(df_country["Log_Pop"], period=1)
-#     res = stl.fit()
-#     smoothed_log = res.trend
-
-#     # Use auto_arima for optimal ARIMA parameters
-#     model = auto_arima(df_country["Diff_Pop"].dropna(), seasonal=False, stepwise=True, suppress_warnings=True)
-#     # Forecast future values in log scale
-#     forecast_log = model.predict(n_periods=len(forecast_years))
-
-#     # Convert forecast back from log scale
-#     forecast = np.exp(forecast_log)
-
-#     # Last smoothed value (exponentiated)
-#     last_smoothed = np.exp(smoothed_log.dropna().iloc[-1])
-
-#     # Indexes
-#     forecast_index = pd.Index(forecast_years)
-#     smoothed_forecast = pd.concat([
-#         pd.Series([last_smoothed], index=[df_country.index[-1]]),
-#         pd.Series(forecast, index=forecast_index)
-#     ])
-
-#   # Plotting
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(df_country.index, df_country["Population"], label="Historical Data", color="blue", linewidth=2)
-#     plt.plot(smoothed_log.index, np.exp(smoothed_log), label="Smoothed Data", color="green", linewidth=2)
-#     plt.plot(smoothed_forecast.index, smoothed_forecast.values, label="Forecasted Data", color="red", linestyle="--", linewidth=2)
-
-#     plt.xlabel("Year")
-#     plt.ylabel("Population")
-#     plt.title(f"Population Forecast for {country_name} (2024–2034)")
-#     plt.legend()
-#     plt.grid(True)
-#     plt.tight_layout()
-
-#     # Save the plot and CSV file
-#     plot_filename = f"Graphs/Forecast_Plot_{country_name}.png"
-#     df_country.to_csv(f"Data/{country_name}_Population.csv")  # Save the CSV as well
-#     plt.savefig(plot_filename)
-#     print(f"Saved forecast plot and CSV for {country_name}")
-#     plt.show()
-#     return pd.Series(forecast, index=forecast_index)
-
-
-# import os
-# import matplotlib.pyplot as plt
-# import pandas as pd
-# import numpy as np
-# from statsmodels.tsa.seasonal import STL
-# from pmdarima import auto_arima
-
-# def forecast_population(df_country, forecast_years, country_name):
-#     """
-#     Forecast population using STL smoothing and auto_arima, and save both plot and CSV.
-#     Historical data: Blue, Smoothed: Green, Forecast continuation: Red dashed.
-#     """
-#     # Create necessary directories
-#     os.makedirs("Graphs", exist_ok=True)
-#     os.makedirs("datas", exist_ok=True)
-
-#     # Log transform to stabilize variance
-#     df_country["Log_Pop"] = np.log(df_country["Population"])
-
-#     # STL decomposition
-#     stl = STL(df_country["Log_Pop"], period=1)
-#     res = stl.fit()
-#     smoothed_log = res.trend
-
-#     # Train ARIMA on log-transformed population (not differenced manually)
-#     model = auto_arima(df_country["Log_Pop"], seasonal=False, stepwise=True, suppress_warnings=True)
-
-#     # Forecast in log scale
-#     forecast_log = model.predict(n_periods=len(forecast_years))
-#     forecast = np.exp(forecast_log)  # Back to normal scale
-
-#     # Get forecast index
-#     forecast_index = pd.Index(forecast_years)
-
-#     # Join last smoothed value with forecast to form a smooth continuation
-#     last_smoothed = np.exp(smoothed_log.dropna().iloc[-1])
-#     smoothed_forecast = pd.concat([
-#         pd.Series([last_smoothed], index=[df_country.index[-1]]),
-#         pd.Series(forecast, index=forecast_index)
-#     ])
-
-#     # Plotting
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(df_country.index, df_country["Population"], label="Historical Data", color="blue", linewidth=2)
-#     plt.plot(smoothed_log.index, np.exp(smoothed_log), label="Smoothed Trend", color="green", linewidth=2)
-#     plt.plot(smoothed_forecast.index, smoothed_forecast.values, label="Forecasted Trend", color="red", linestyle="--", linewidth=2)
-
-#     plt.xlabel("Year")
-#     plt.ylabel("Population")
-#     plt.title(f"Population Forecast for {country_name} (2024–2035)")
-#     plt.legend()
-#     plt.grid(True)
-#     plt.tight_layout()
-
-#     # Save plot and CSV
-#     plt.savefig(f"Graphs/Forecast_Plot_{country_name}.png")
-#     df_country[["Population"]].to_csv(f"datas/{country_name}_Population.csv")
-#     print(f"📊 Saved forecast plot and CSV for {country_name}")
-#     plt.close()
-
-#     return pd.Series(forecast, index=forecast_index)
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import STL
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+import seaborn as sns
+import os
 
-def forecast_population(model, df_country, forecast_years, country_name):
-    """
-    Your original function with explicit smoothing-forecast connection
-    """
-    # 1. Historical Data
-    historical = df_country["Population"]
-    
-    # 2. Smoothing (STL)
-    stl = STL(np.log(historical), period=1)
-    res = stl.fit()
-    smoothed = np.exp(res.trend)
-    
-    # 3. Forecasting 
-    forecast = model.forecast(steps=len(forecast_years))
-    
-    # Create smooth transition between last smoothed value and forecast
-    last_smoothed = smoothed.iloc[-1]
-    forecast_index = pd.Index(forecast_years)
-    smoothed_forecast = pd.concat([
-        pd.Series([last_smoothed], index=[df_country.index[-1]]),
-        pd.Series(forecast, index=forecast_index)
-    ])
+def ensure_directory(path):
+    """Guarantee directory exists and return path"""
+    os.makedirs(path, exist_ok=True)
+    return path
 
-    # Plotting (your original style)
-    plt.figure(figsize=(10, 5))
-    plt.plot(df_country.index, historical, label="Historical Data", color="blue", linewidth=2)
-    plt.plot(smoothed.index, smoothed, label="Smoothed Data", color="green", linewidth=2)
-    plt.plot(smoothed_forecast.index, smoothed_forecast, 
-             label="Forecasted Data", color="red", linestyle="--", linewidth=2)
+def visualize_differencing(series, country):
+    """Complete differencing visualization with guaranteed saving"""
+    try:
+        # Setup directory and figure
+        diff_dir = ensure_directory("Graphs/Differencing")
+        plt.figure(figsize=(15,12))
+        
+        # Original Series
+        plt.subplot(4,1,1)
+        plt.plot(series.index, series, label='Original')
+        adf_orig = adfuller(series)[1]
+        plt.title(f'{country} - Original (ADF p={adf_orig:.4f})')
+        plt.grid(True)
+        
+        # First Difference
+        diff1 = series.diff().dropna()
+        plt.subplot(4,1,2)
+        plt.plot(diff1.index, diff1, color='orange')
+        plt.axhline(0, color='r', linestyle='--', alpha=0.5)
+        adf_diff1 = adfuller(diff1)[1]
+        plt.title(f'1st Difference (ADF p={adf_diff1:.4f})')
+        plt.grid(True)
+        
+        # Second Difference
+        diff2 = diff1.diff().dropna()
+        plt.subplot(4,1,3)
+        plt.plot(diff2.index, diff2, color='green')
+        plt.axhline(0, color='r', linestyle='--', alpha=0.5)
+        adf_diff2 = adfuller(diff2)[1]
+        plt.title(f'2nd Difference (ADF p={adf_diff2:.4f})')
+        plt.grid(True)
+        
+        # Selected Difference
+        optimal_diff = diff1 if adf_diff1 < 0.05 else diff2
+        plt.subplot(4,1,4)
+        plt.plot(optimal_diff.index, optimal_diff, color='purple')
+        plt.axhline(0, color='r', linestyle='--', alpha=0.5)
+        plt.title(f'Selected (ADF p={adfuller(optimal_diff)[1]:.4f})')
+        plt.grid(True)
+        
+        plt.tight_layout()
+        
+        # Guaranteed save
+        save_path = os.path.join(diff_dir, f"{country}_differencing.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"✅ Saved differencing plot: {save_path}")
+        
+        return optimal_diff
+        
+    except Exception as e:
+        print(f"❌ Differencing plot error: {str(e)}")
+        plt.close()
+        return series.diff().dropna()  # Fallback
 
-    plt.xlabel("Year")
-    plt.ylabel("Population")
-    plt.title(f"Population Forecast for {country_name}")
-    plt.legend()
-    plt.grid(True)
-    
-    # Save outputs
-    plt.savefig(f"Graphs/Forecast_Plot_{country_name}.png")
-    pd.DataFrame({
-        'Year': smoothed_forecast.index,
-        'Population': smoothed_forecast.values
-    }).to_csv(f"datas/{country_name}_Forecast.csv")
-    
-    plt.close()
-    
-    return smoothed_forecast
+def diagnose_residuals(residuals, country):
+    """Complete residual diagnostics with guaranteed saving"""
+    try:
+        res_dir = ensure_directory("Graphs/Residuals")
+        plt.figure(figsize=(15,5))
+        
+        # Residuals Plot
+        plt.subplot(1,3,1)
+        plt.plot(residuals)
+        plt.axhline(0, color='r', linestyle='--')
+        plt.title('Residuals')
+        
+        # ACF Plot
+        plt.subplot(1,3,2)
+        plot_acf(residuals, lags=20, ax=plt.gca())
+        plt.title('ACF')
+        
+        # PACF Plot
+        plt.subplot(1,3,3)
+        plot_pacf(residuals, lags=20, ax=plt.gca())
+        plt.title('PACF')
+        
+        plt.tight_layout()
+        
+        save_path = os.path.join(res_dir, f"{country}_residuals.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"✅ Saved residuals plot: {save_path}")
+        
+    except Exception as e:
+        print(f"❌ Residuals plot error: {str(e)}")
+        plt.close()
+
+def create_forecast_plot(historical, smoothed, forecast, country):
+    """Complete forecast visualization with trend preservation"""
+    try:
+        forecast_dir = ensure_directory("Graphs/Forecasts")
+        plt.figure(figsize=(12,6))
+        
+        # Align forecast with history
+        full_series = pd.concat([
+            historical,
+            pd.Series([historical.iloc[-1]], index=[historical.index[-1]]),
+            forecast
+        ])
+        
+        # Plot components
+        plt.plot(historical.index, historical, 'b-', label='Historical', linewidth=2)
+        plt.plot(smoothed.index, smoothed, 'g-', label='Trend (5Y MA)', linewidth=2)
+        plt.plot(full_series.index[-len(forecast)-1:], 
+                full_series[-len(forecast)-1:], 
+                'r--', label='Forecast', linewidth=2)
+        
+        # Formatting
+        plt.axvline(x=historical.index[-1], color='gray', linestyle=':')
+        plt.title(f'{country} Population Forecast')
+        plt.xlabel('Year')
+        plt.ylabel('Population')
+        plt.legend(loc='upper left')
+        plt.grid(True)
+        
+        save_path = os.path.join(forecast_dir, f"{country}_forecast.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"✅ Saved forecast plot: {save_path}")
+        
+    except Exception as e:
+        print(f"❌ Forecast plot error: {str(e)}")
+        plt.close()

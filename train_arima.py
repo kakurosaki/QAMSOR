@@ -3,49 +3,42 @@ import itertools
 import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 
-def grid_search_arima(series, max_p=5, max_d=2, max_q=5, max_P=2, max_Q=2, max_D=1):
-    p_values = range(0, max_p + 1)
-    d_values = range(0, max_d + 1)
-    q_values = range(0, max_q + 1)
-    seasonal_p_values = range(0, max_P + 1)
-    seasonal_q_values = range(0, max_Q + 1)
-
-    best_rmse = np.inf
+def grid_search_arima(series, max_p=3, max_d=2, max_q=3):
+    best_aic = np.inf
     best_model = None
     best_order = None
-
-    for p, d, q in itertools.product(p_values, d_values, q_values):
-        for P, D, Q in itertools.product(seasonal_p_values, seasonal_q_values):
-            try:
-                model = ARIMA(series, order=(p, d, q), seasonal_order=(P, D, Q, 12))
-                model_fit = model.fit()
-
-                predictions = model_fit.predict(start=len(series), end=len(series) + len(series) - 1)
-                rmse = np.sqrt(np.mean((predictions - series[-len(predictions):]) ** 2))
-
-                if rmse < best_rmse:
-                    best_rmse = rmse
-                    best_model = model_fit
-                    best_order = (p, d, q, P, D, Q)
-            except Exception as e:
-                print(f"Error fitting ARIMA with params {(p, d, q, P, D, Q)}: {e}")
-                continue
-
-    if best_model is None:
-        return None, None
+    
+    for p, d, q in itertools.product(
+        range(max_p + 1),
+        range(max_d + 1), 
+        range(max_q + 1)
+    ):
+        try:
+            model = ARIMA(series, order=(p, d, q))
+            model_fit = model.fit()
+            if model_fit.aic < best_aic:
+                best_aic = model_fit.aic
+                best_model = model_fit
+                best_order = (p, d, q)
+        except:
+            continue
+            
     return best_model, best_order
 
-def time_series_cv(series, model_class, n_splits=5):
+def time_series_cv(series, n_splits=3):
     tscv = TimeSeriesSplit(n_splits=n_splits)
     rmses = []
-
+    
     for train_idx, test_idx in tscv.split(series):
-        train, test = series[train_idx], series[test_idx]
-        model = model_class(order=(1, 1, 1))
-        model_fit = model.fit(train)
-
-        predictions = model_fit.predict(start=len(train), end=len(train) + len(test) - 1)
-        rmse = np.sqrt(np.mean((predictions - test) ** 2))
-        rmses.append(rmse)
-
+        train, test = series.iloc[train_idx], series.iloc[test_idx]
+        try:
+            model = ARIMA(train, order=(1,1,1))
+            model_fit = model.fit()
+            preds = model_fit.get_forecast(steps=len(test)).predicted_mean
+            rmse = np.sqrt(np.mean((preds.values - test.values) ** 2))
+            rmses.append(rmse)
+        except Exception as e:
+            print(f"CV error: {str(e)}")
+            continue
+            
     return rmses

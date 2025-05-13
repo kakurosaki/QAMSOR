@@ -1,101 +1,159 @@
-import os
 import pandas as pd
-import matplotlib.pyplot as plt
-from load_data import load_population_data, get_all_countries
-from stationarity_test import check_stationarity, apply_differencing
-from train_arima import grid_search_arima, time_series_cv
-from forecast import forecast_population
-from statsmodels.tsa.arima.model import ARIMA 
-from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-import warnings
 import numpy as np
+from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.stattools import adfuller
+from forecast import visualize_differencing, diagnose_residuals, create_forecast_plot
+import os
+import warnings
+warnings.filterwarnings("ignore")
+import logging
 
-warnings.filterwarnings("ignore", category=FutureWarning)
+# Set up logging
+logging.basicConfig(filename='population_forecast.log', level=logging.INFO)
 
-# Ensure directories exist
-os.makedirs("Graphs", exist_ok=True)
-os.makedirs("datas", exist_ok=True)
+def ensure_directories_exist():
+    """Create all required directories"""
+    dirs = [
+        "Graphs/Differencing",
+        "Graphs/Residuals", 
+        "Graphs/Forecasts",
+        "datas"
+    ]
+    for dir_path in dirs:
+        os.makedirs(dir_path, exist_ok=True)
 
-def residual_diagnostics(model):
-    residuals = model.resid
-    print("\n🔍 Residual Diagnostics:")
-    print(residuals.describe())
+def optimize_arima(series, country):
+    """Enhanced grid search with robust error handling"""
+    best_aic = np.inf
+    best_order = None
+    best_model = None
     
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    plot_acf(residuals, ax=axes[0])
-    plot_pacf(residuals, ax=axes[1])
-    plt.suptitle("ACF and PACF of Residuals")
-    plt.tight_layout()
-    plt.show()
-
-# Auto-detect all country names
-countries = get_all_countries("Asian_Countries_Population.csv")
-print("\n🔎 Detected Countries:", countries)
-
-# Dictionary to store all forecasts
-all_forecasts = {}
-
-# Loop through each country and forecast
-for country in countries:
+    # Parameter ranges optimized for population data
+    p_range = range(0, 3)  # AR order
+    d_range = range(1, 2)  # Differencing (1 is usually best for population)
+    q_range = range(0, 3)  # MA order
+    
+    for p in p_range:
+        for d in d_range:
+            for q in q_range:
+                for trend in ['c', None]:  # Try with and without constant trend
+                    try:
+                        model = ARIMA(series, order=(p,d,q), trend=trend).fit()
+                        
+                        # Validate model converged properly
+                        if (not np.isinf(model.aic) and 
+                            model.mle_retvals['converged'] and
+                            not np.isnan(model.params).any()):
+                            
+                            if model.aic < best_aic:
+                                best_aic = model.aic
+                                best_order = (p,d,q)
+                                best_model = model
+                                best_trend = trend
+                                
+                    except Exception as e:
+                        logging.warning(f"Failed ARIMA({p},{d},{q}) for {country}: {str(e)}")
+                        continue
+    
+    if best_model:
+        trend_status = 'c' if best_trend else 'none'
+        print(f"✅ Best model: ARIMA{best_order} | Trend: {trend_status} | AIC: {best_aic:.2f}")
+        return best_model, best_order
+    
+    # Fallback to simple model if optimization fails
+    print("⚠️ Optimization failed - trying simple fallback model")
     try:
-        print(f"\n🔹 Processing: {country}")
-
-        # Step 1: Load data
-        df_country = load_population_data("Asian_Countries_Population.csv", country)
-
-        if df_country.empty or len(df_country) < 5:
-            print(f"⚠️ Not enough data for {country}, skipping...")
-            continue
-
-        print(f"📊 {country} - Data Loaded: {df_country.shape}")
-
-        # Step 2: Check Stationarity and Apply Differencing if Needed
-        is_stationary, p_value = check_stationarity(df_country["Population"])
-        if not is_stationary:
-            print(f"📉 {country}'s data is non-stationary (p-value: {p_value:.5f}). Differencing needed.")
-            df_country["Population"] = apply_differencing(df_country["Population"], order=1)
-            print(f"🔍 Data after differencing for {country}: {df_country['Population'].head()}")
-
-        if df_country["Population"].empty or len(df_country["Population"]) < 5:
-            print(f"⚠️ Not enough data after differencing for {country}, skipping...")
-            continue
-
-        # Step 3: Train ARIMA Model using Grid Search
-        model, best_order = grid_search_arima(df_country["Population"])  # Now only unpacking 2 values
-        if model is None:
-            print(f"❌ No valid ARIMA model found for {country}")
-            continue
-            
-        print(f"Best Order: {best_order}")
-
-        # Step 4: Check Residuals
-        residual_diagnostics(model)
-
-        # Step 5: Evaluate Model with Time Series Cross-Validation
-        cv_rmse = time_series_cv(df_country["Population"], ARIMA, n_splits=5)
-        print(f"Time Series Cross-Validation RMSEs: {cv_rmse}")
-        print(f"Average RMSE: {np.mean(cv_rmse)}")
-
-        # Step 6: Forecast Future Population (2024–2035)
-        forecast_years = list(range(2024, 2036))
-        forecasted_values = forecast_population(model, df_country, forecast_years, country)
-
-        # Step 7: Save Forecast Results in 'datas' folder
-        forecast_df = pd.DataFrame({"Year": forecast_years, "Forecasted Population": forecasted_values})
-        forecast_df.to_csv(f"datas/Forecast_{country}.csv", index=False)
-        print(f"📂 Saved forecast CSV for {country} in 'datas/' folder.")
-
-        # Store forecast in a dictionary
-        all_forecasts[country] = forecasted_values
-
+        model = ARIMA(series, order=(1,1,1), trend='c').fit()
+        print("✅ Using fallback ARIMA(1,1,1) with trend")
+        return model, (1,1,1)
     except Exception as e:
-        print(f"❌ Error processing {country}: {e}")
+        logging.error(f"Fallback model failed for {country}: {str(e)}")
+        return None, None
 
-# Step 8: Save All Forecasts in One File
-if all_forecasts:
-    all_forecasts_df = pd.DataFrame(all_forecasts, index=forecast_years)
-    all_forecasts_df.index.name = "Year"
-    all_forecasts_df.to_csv("datas/All_Countries_Forecast.csv")
-    print("\n✅ All forecasts saved in 'datas/All_Countries_Forecast.csv'!")
-else:
-    print("\n⚠️ No forecasts were generated. Check the data.")
+def main():
+    ensure_directories_exist()
+    
+    try:
+        df = pd.read_csv("Asian_Countries_Population.csv")
+        countries = df['Country Name'].unique()
+        
+        for country in countries:
+            try:
+                print(f"\n🔍 Processing {country}...")
+                logging.info(f"Processing {country}")
+                
+                # Load and prepare data
+                country_data = df[df['Country Name'] == country]
+                years = [str(y) for y in range(1960, 2024)]
+                series = country_data[years].T.dropna()
+                series.index = series.index.astype(int)
+                series.columns = ['Population']
+                
+                # Check data sufficiency
+                if len(series) < 15:
+                    print(f"⚠️ Insufficient data points ({len(series)})")
+                    continue
+                
+                # Differencing with careful stationarity testing
+                stationary_series = series['Population'].diff().dropna()
+                adf_p = adfuller(stationary_series)[1]
+                
+                if adf_p > 0.05 and len(stationary_series) > 10:
+                    print(f"Testing second differencing (p-value={adf_p:.3f})")
+                    second_diff = stationary_series.diff().dropna()
+                    if len(second_diff) > 5 and adfuller(second_diff)[1] < 0.05:
+                        stationary_series = second_diff
+                        print("Applied second differencing")
+                
+                # Model fitting with enhanced optimization
+                model, order = optimize_arima(stationary_series, country)
+                if not model:
+                    print("❌ Could not fit any ARIMA model")
+                    continue
+                
+                # Generate and save diagnostics
+                diagnose_residuals(model.resid, country)
+                
+                # Forecasting
+                forecast_steps = 12
+                forecast = model.get_forecast(steps=forecast_steps)
+                forecast_values = forecast.predicted_mean
+                
+                # Reconstruct trend based on differencing order
+                last_value = series['Population'].iloc[-1]
+                if order[1] == 1:
+                    forecast_values = np.cumsum(forecast_values) + last_value
+                elif order[1] == 2:
+                    forecast_values = np.cumsum(np.cumsum(forecast_values)) + last_value + series['Population'].diff().iloc[-1]
+                
+                # Create forecast DataFrame
+                forecast_df = pd.DataFrame({
+                    'Year': range(2024, 2024 + forecast_steps),
+                    'Population': forecast_values
+                })
+                
+                # Visualization
+                create_forecast_plot(
+                    historical=series['Population'],
+                    smoothed=series['Population'].rolling(5).mean().dropna(),
+                    forecast=forecast_df.set_index('Year')['Population'],
+                    country=country
+                )
+                
+                # Save results
+                forecast_df.to_csv(f"datas/{country}_forecast.csv", index=False)
+                print(f"📊 Saved forecast for {country}")
+                
+            except Exception as e:
+                print(f"⚠️ Error processing {country}: {str(e)}")
+                logging.error(f"Error processing {country}: {str(e)}")
+                continue
+                
+        print("\n🎉 Processing completed!")
+        
+    except Exception as e:
+        print(f"\n💥 Critical error: {str(e)}")
+        logging.critical(f"Main execution failed: {str(e)}")
+
+if __name__ == "__main__":
+    main()

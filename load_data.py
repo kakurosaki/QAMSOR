@@ -1,45 +1,41 @@
 import pandas as pd
 
-def load_population_data(filename, country):
-    """
-    Loads the population dataset, cleans it, and extracts data for a specific country.
+def load_population_data(data_file, country):
+    """Load and transform population data from wide to long format"""
+    try:
+        df = pd.read_csv(data_file)
+        country_data = df[df["Country Name"] == country]
+        
+        if country_data.empty:
+            print(f"No data found for {country}")
+            return pd.DataFrame()
+        
+        # Get all year columns (1960-2023)
+        year_cols = [str(y) for y in range(1960, 2024)]
+        
+        # Reshape from wide to long format
+        melted = country_data.melt(
+            id_vars=["Country Name", "Country Code"],
+            value_vars=year_cols,
+            var_name="Year",
+            value_name="Population"
+        )
+        
+        # Convert types and set index
+        melted["Year"] = melted["Year"].astype(int)
+        result = melted.set_index("Year")[["Population"]].sort_index()
+        
+        return result.dropna()
+        
+    except Exception as e:
+        print(f"Error loading data for {country}: {str(e)}")
+        return pd.DataFrame()
 
-    Args:
-    - filename (str): Path to the CSV file.
-    - country (str): Name of the country to filter.
-
-    Returns:
-    - DataFrame: Transformed dataset with years as index and population values.
-    """
-    df = pd.read_csv(filename)
-
-    # Remove unnecessary columns
-    df = df.drop(columns=["Country Code", "Indicator Name", "Indicator Code", "Unnamed: 68"], errors="ignore")
-
-    # Select data for the chosen country
-    df_country = df[df["Country Name"] == country].set_index("Country Name").T
-
-    # Convert index (years) to **numeric** and sort for correct plotting
-    df_country.index = pd.to_numeric(df_country.index, errors='coerce')  # Ensure years are numbers
-    df_country.dropna(inplace=True)  # Remove any non-numeric rows
-
-    # Rename column to "Population"
-    df_country.columns = ["Population"]
-
-    # Ensure the data is sorted in ascending order (for proper plotting)
-    df_country.sort_index(inplace=True)
-
-    return df_country
-
-def get_all_countries(filename):
-    """
-    Extracts all unique country names from the dataset.
-
-    Args:
-    - filename (str): Path to the CSV file.
-
-    Returns:
-    - List of country names.
-    """
-    df = pd.read_csv(filename)
-    return df["Country Name"].unique().tolist()
+def get_all_countries(data_file):
+    """Get list of unique countries in dataset"""
+    try:
+        df = pd.read_csv(data_file)
+        return df["Country Name"].unique().tolist()
+    except Exception as e:
+        print(f"Error reading countries: {str(e)}")
+        return []
