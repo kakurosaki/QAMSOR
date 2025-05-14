@@ -65,11 +65,15 @@ def save_metrics_to_csv(country, metrics, filename="metrics.csv"):
         raise
 
 def save_validation_report(country, train_years, val_years, val_results, filename="validation_report.csv"):
-    """Save validation report with verification"""
+    """Save validation/test report with verification"""
     try:
         os.makedirs("metrics", exist_ok=True)
         os.chmod("metrics", 0o755)
         filepath = Path("metrics") / filename
+        
+        # Convert numpy arrays if present
+        actuals = val_results['actuals'].tolist() if hasattr(val_results['actuals'], 'tolist') else val_results['actuals']
+        predictions = val_results['predictions'].tolist() if hasattr(val_results['predictions'], 'tolist') else val_results['predictions']
         
         report = pd.DataFrame({
             'Country': [country],
@@ -77,10 +81,11 @@ def save_validation_report(country, train_years, val_years, val_results, filenam
             'Training_End': [train_years[-1]],
             'Validation_Start': [val_years[0]],
             'Validation_End': [val_years[-1]],
-            'Validation_Actual': [val_results['actuals']],  # Changed from .tolist()
-            'Validation_Predicted': [val_results['predictions']],  # Changed from .tolist()
+            'Validation_Actual': [actuals],
+            'Validation_Predicted': [predictions],
             'Validation_MAPE': [val_results['mape']],
-            'Validation_RMSE': [val_results['rmse']]
+            'Validation_RMSE': [val_results['rmse']],
+            'Report_Type': ['Test' if 'test' in filename.lower() else 'Validation']
         })
         
         if filepath.exists():
@@ -91,8 +96,8 @@ def save_validation_report(country, train_years, val_years, val_results, filenam
         
         updated.to_csv(filepath, index=False)
         verify_file_save(filepath)
-        print(f"✅ Validation report saved to {filepath}")
+        print(f"✅ Report saved to {filepath}")
         return str(filepath)
     except Exception as e:
-        print(f"❌ Failed to save validation report: {str(e)}")
+        print(f"❌ Failed to save report: {str(e)}")
         raise
