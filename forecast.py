@@ -8,14 +8,30 @@ import seaborn as sns
 import os
 
 def ensure_directory(path):
-    """Guarantee directory exists and return path"""
-    os.makedirs(path, exist_ok=True)
-    return path
+    """Create directory with verification"""
+    try:
+        os.makedirs(path, exist_ok=True)
+        os.chmod(path, 0o755)
+        return path
+    except Exception as e:
+        print(f"❌ Failed to create directory {path}: {str(e)}")
+        raise
+
+def verify_plot_save(save_path):
+    """Verify plot was saved successfully"""
+    try:
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(f"Plot not created at {save_path}")
+        if os.path.getsize(save_path) == 0:
+            raise ValueError("Empty plot file")
+        return True
+    except Exception as e:
+        print(f"❌ Plot verification failed: {str(e)}")
+        raise
 
 def visualize_differencing(series, country):
-    """Complete differencing visualization with guaranteed saving"""
+    """Differencing visualization with verification"""
     try:
-        # Setup directory and figure
         diff_dir = ensure_directory("Graphs/Differencing")
         plt.figure(figsize=(15,12))
         
@@ -54,21 +70,21 @@ def visualize_differencing(series, country):
         
         plt.tight_layout()
         
-        # Guaranteed save
         save_path = os.path.join(diff_dir, f"{country}_differencing.png")
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"✅ Saved differencing plot: {save_path}")
         
+        verify_plot_save(save_path)
+        print(f"✅ Saved differencing plot: {save_path}")
         return optimal_diff
         
     except Exception as e:
         print(f"❌ Differencing plot error: {str(e)}")
-        plt.close()
-        return series.diff().dropna()  # Fallback
+        plt.close('all')
+        raise
 
 def diagnose_residuals(residuals, country):
-    """Complete residual diagnostics with guaranteed saving"""
+    """Residual diagnostics with verification"""
     try:
         res_dir = ensure_directory("Graphs/Residuals")
         plt.figure(figsize=(15,5))
@@ -94,14 +110,17 @@ def diagnose_residuals(residuals, country):
         save_path = os.path.join(res_dir, f"{country}_residuals.png")
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
+        
+        verify_plot_save(save_path)
         print(f"✅ Saved residuals plot: {save_path}")
         
     except Exception as e:
         print(f"❌ Residuals plot error: {str(e)}")
-        plt.close()
+        plt.close('all')
+        raise
 
 def create_forecast_plot(historical, smoothed, forecast, country):
-    """Complete forecast visualization with trend preservation"""
+    """Forecast visualization with verification"""
     try:
         forecast_dir = ensure_directory("Graphs/Forecasts")
         plt.figure(figsize=(12,6))
@@ -131,8 +150,56 @@ def create_forecast_plot(historical, smoothed, forecast, country):
         save_path = os.path.join(forecast_dir, f"{country}_forecast.png")
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
+        
+        verify_plot_save(save_path)
         print(f"✅ Saved forecast plot: {save_path}")
         
     except Exception as e:
         print(f"❌ Forecast plot error: {str(e)}")
+        plt.close('all')
+        raise
+
+def plot_validation(historical, train_years, val_years, val_results, country):
+    """Validation visualization with verification"""
+    try:
+        val_dir = ensure_directory("Graphs/Validation")
+        plt.figure(figsize=(14,7))
+        
+        # Plot full historical data
+        plt.plot(historical.index, historical, 'b-', label='Historical Data', linewidth=1.5)
+        
+        # Highlight validation period
+        val_data = historical.loc[val_years[0]:val_years[-1]]
+        plt.plot(val_data.index, val_data, 'ro-', markersize=6, label='Actual Values')
+        
+        # Plot predictions
+        plt.plot(val_data.index, val_results['predictions'], 'gx--', 
+                 markersize=8, linewidth=1.5,
+                 label=f'Predictions (MAPE: {val_results["mape"]:.1f}%)')
+        
+        # Add annotations
+        for year, actual, pred in zip(val_years, val_results['actuals'], val_results['predictions']):
+            plt.text(year, actual, f"  {actual/1e6:.1f}M", ha='left', va='center', color='red')
+            plt.text(year, pred, f"  {pred/1e6:.1f}M", ha='left', va='center', color='green')
+        
+        # Add shaded regions
+        plt.axvspan(train_years[0], train_years[-1], alpha=0.1, color='blue', label='Training Period')
+        plt.axvspan(val_years[0], val_years[-1], alpha=0.1, color='orange', label='Validation Period')
+        
+        plt.title(f"{country}\nModel Validation ({val_years[0]}-{val_years[-1]})", pad=20)
+        plt.xlabel('Year')
+        plt.ylabel('Population')
+        plt.legend(loc='upper left')
+        plt.grid(True, alpha=0.3)
+        
+        save_path = os.path.join(val_dir, f"{country}_validation.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
+        
+        verify_plot_save(save_path)
+        print(f"✅ Saved validation plot: {save_path}")
+        
+    except Exception as e:
+        print(f"❌ Validation plot error: {str(e)}")
+        plt.close('all')
+        raise
