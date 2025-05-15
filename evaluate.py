@@ -4,26 +4,43 @@ import os
 from pathlib import Path
 
 def compute_rmse(actual, predicted):
-    """Compute RMSE with validation"""
+    """Compute RMSE with robust validation"""
     try:
+        actual = np.asarray(actual)
+        predicted = np.asarray(predicted)
+        
         if len(actual) != len(predicted):
-            raise ValueError("Inputs must have same length")
+            raise ValueError(f"Length mismatch: actual={len(actual)}, predicted={len(predicted)}")
+        
+        if np.isnan(actual).any() or np.isnan(predicted).any():
+            print("⚠️ Inputs contain NaN values")
+            return float('nan')
+            
         return np.sqrt(np.mean((actual - predicted) ** 2))
     except Exception as e:
         print(f"❌ RMSE calculation error: {str(e)}")
-        raise
+        return float('nan')
 
-def compute_mape(actual, predicted):
-    """Compute MAPE with validation"""
+def compute_mape(actual, predicted, epsilon=1e-10):
+    """Compute MAPE with robust validation"""
     try:
+        actual = np.asarray(actual)
+        predicted = np.asarray(predicted)
+        
         if len(actual) != len(predicted):
-            raise ValueError("Inputs must have same length")
-        if (actual == 0).any():
-            raise ValueError("Actual values contain zeros")
+            raise ValueError(f"Length mismatch: actual={len(actual)}, predicted={len(predicted)}")
+        
+        # Handle zero and near-zero actual values
+        actual = np.where(np.abs(actual) < epsilon, epsilon, actual)
+        
+        if np.isnan(actual).any() or np.isnan(predicted).any():
+            print("⚠️ Inputs contain NaN values")
+            return float('nan')
+            
         return np.mean(np.abs((actual - predicted) / actual)) * 100
     except Exception as e:
         print(f"❌ MAPE calculation error: {str(e)}")
-        raise
+        return float('nan')
 
 def verify_file_save(filepath):
     """Verify file was saved successfully"""

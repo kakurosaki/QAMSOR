@@ -160,7 +160,7 @@ def create_forecast_plot(historical, smoothed, forecast, country):
         raise
 
 def plot_validation(historical, train_years, val_years, val_results, country):
-    """Validation visualization with verification"""
+    """Validation visualization without MAPE in legend"""
     try:
         val_dir = ensure_directory("Graphs/Validation")
         plt.figure(figsize=(14,7))
@@ -172,12 +172,12 @@ def plot_validation(historical, train_years, val_years, val_results, country):
         val_data = historical.loc[val_years[0]:val_years[-1]]
         plt.plot(val_data.index, val_data, 'ro-', markersize=6, label='Actual Values')
         
-        # Plot predictions
+        # Plot predictions (without MAPE)
         plt.plot(val_data.index, val_results['predictions'], 'gx--', 
                  markersize=8, linewidth=1.5,
-                 label=f'Predictions (MAPE: {val_results["mape"]:.1f}%)')
+                 label='Predictions')
         
-        # Add annotations
+        # Add annotations (values only)
         for year, actual, pred in zip(val_years, val_results['actuals'], val_results['predictions']):
             plt.text(year, actual, f"  {actual/1e6:.1f}M", ha='left', va='center', color='red')
             plt.text(year, pred, f"  {pred/1e6:.1f}M", ha='left', va='center', color='green')
@@ -201,5 +201,46 @@ def plot_validation(historical, train_years, val_years, val_results, country):
         
     except Exception as e:
         print(f"❌ Validation plot error: {str(e)}")
+        plt.close('all')
+        raise
+
+def plot_testing(historical, train_years, val_years, test_years, test_results, country):
+    """Testing visualization without showing test predictions"""
+    try:
+        test_dir = ensure_directory("Graphs/Testing")
+        plt.figure(figsize=(14,7))
+        
+        # Plot full historical data
+        plt.plot(historical.index, historical, 'b-', label='Historical Data', linewidth=1.5)
+        
+        # Highlight periods
+        plt.axvspan(train_years[0], train_years[-1], alpha=0.1, color='blue', label='Training Period')
+        if val_years is not None:
+            plt.axvspan(val_years[0], val_years[-1], alpha=0.1, color='orange', label='Validation Period')
+        plt.axvspan(test_years[0], test_years[-1], alpha=0.1, color='red', label='Testing Period')
+        
+        # Plot only test actuals (removed predictions)
+        test_data = historical.loc[test_years[0]:test_years[-1]]
+        plt.plot(test_data.index, test_data, 'ro-', markersize=6, label='Actual Values')
+        
+        # Add annotations for actual values only
+        for year, actual in zip(test_years, test_results['actuals']):
+            plt.text(year, actual, f"  {actual/1e6:.1f}M", ha='left', va='center', color='red')
+        
+        plt.title(f"{country}\nModel Testing ({test_years[0]}-{test_years[-1]})", pad=20)
+        plt.xlabel('Year')
+        plt.ylabel('Population')
+        plt.legend(loc='upper left')
+        plt.grid(True, alpha=0.3)
+        
+        save_path = os.path.join(test_dir, f"{country}_testing.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        verify_plot_save(save_path)
+        print(f"✅ Saved testing plot: {save_path}")
+        
+    except Exception as e:
+        print(f"❌ Testing plot error: {str(e)}")
         plt.close('all')
         raise

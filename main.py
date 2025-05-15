@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.stattools import adfuller
-from forecast import visualize_differencing, diagnose_residuals, create_forecast_plot, plot_validation
+from forecast import visualize_differencing, diagnose_residuals, create_forecast_plot, plot_validation, plot_testing
 from evaluate import compute_rmse, compute_mape, save_metrics_to_csv, save_validation_report
 from data_cleaner import clean_population_data
 import os
@@ -34,6 +34,7 @@ def ensure_directories_exist():
         "Graphs/Residuals", 
         "Graphs/Forecasts",
         "Graphs/Validation",
+        "Graphs/Testing",
         "datas",
         "metrics",
         "clean_snapshots",
@@ -103,16 +104,82 @@ def create_splits(series):
     test = series.iloc[-test_size:]
     return train, val, test
 
-def hybrid_validation(train_series, val_series, country, order):
-    """Modified validation to accept explicit splits"""
+def run_testing(train_val_series, test_series, country, order):
+    """Enhanced testing function with robust error handling"""
     try:
+        # Debug prints
+        print(f"\n=== Testing Phase for {country} ===")
+        print(f"Test period: {test_series.index[0]} to {test_series.index[-1]}")
+        print(f"Test values: {test_series.values}")
+        
+        # Validate test series
+        if len(test_series) < 2:
+            print(f"⚠️ Insufficient test points ({len(test_series)})")
+            return None
+            
+        if (test_series <= 0).any():
+            print("⚠️ Zero/negative values in test data, applying correction")
+            test_series = test_series.replace(0, 1e-10)
+            test_series[test_series < 0] = 1e-10
+        
+        # Train final model
+        final_model = ARIMA(train_val_series, order=order).fit()
+        
+        # Generate forecasts
+        forecast = final_model.get_forecast(steps=len(test_series))
+        test_preds = forecast.predicted_mean
+        
+        # Inverse differencing
+        if order[1] == 1:
+            last_value = train_val_series.iloc[-1]
+            print(f"Applying 1st order differencing inverse with last value: {last_value}")
+            test_preds = test_preds.cumsum() + last_value
+        elif order[1] == 2:
+            last_value = train_val_series.iloc[-1]
+            last_diff = train_val_series.diff().iloc[-1]
+            print(f"Applying 2nd order differencing inverse with last value: {last_value}, last diff: {last_diff}")
+            test_preds = (test_preds.cumsum().cumsum() + last_diff + last_value)
+        
+        print(f"Final predictions: {test_preds.values}")
+        
+        # Calculate metrics
+        test_results = {
+            'actuals': test_series.values.tolist(),
+            'predictions': test_preds.tolist(),
+            'mape': compute_mape(test_series, test_preds),
+            'rmse': compute_rmse(test_series, test_preds)
+        }
+        
+        # Save results
+        save_validation_report(
+            country=country,
+            train_years=train_val_series.index,
+            val_years=test_series.index,
+            val_results=test_results,
+            filename="test_results.csv"
+        )
+        
+        return test_results
+        
+    except Exception as e:
+        print(f"❌ Testing failed for {country}: {str(e)}")
+        return None
+
+def hybrid_validation(train_series, val_series, country, order):
+    """Original validation function with added diagnostics"""
+    try:
+        print(f"\n=== Validation Phase for {country} ===")
+        print(f"Validation period: {val_series.index[0]} to {val_series.index[-1]}")
+        
         if len(train_series) < 10:
+            print("⚠️ Insufficient training data")
             return float('nan'), None, None, None
             
         actuals = val_series.values
         predictions = []
         temp_model = ARIMA(train_series, order=order).fit()
         
+        # Rolling forecast
         for i in range(1, len(val_series)+1):
             pred = temp_model.get_forecast(steps=i).predicted_mean.iloc[-1]
             predictions.append(pred)
@@ -123,8 +190,16 @@ def hybrid_validation(train_series, val_series, country, order):
         actuals_list = actuals.tolist() if hasattr(actuals, 'tolist') else list(actuals)
         predictions_list = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
         
+        # Handle zero values
+        if 0 in actuals_list:
+            print("⚠️ Zero values in validation data, applying correction")
+            actuals_list = [x if x != 0 else 1e-10 for x in actuals_list]
+        
         mape = compute_mape(pd.Series(actuals_list), pd.Series(predictions_list))
         rmse = compute_rmse(pd.Series(actuals_list), pd.Series(predictions_list))
+        
+        print(f"Validation MAPE: {mape:.2f}%")
+        print(f"Validation RMSE: {rmse:.2f}")
         
         return mape, {
             'actuals': actuals_list,
@@ -134,44 +209,9 @@ def hybrid_validation(train_series, val_series, country, order):
         }, train_series.index, val_series.index
         
     except Exception as e:
-        logging.warning(f"Validation failed for {country}: {str(e)}")
+        print(f"❌ Validation failed for {country}: {str(e)}")
         return float('nan'), None, None, None
-
-def run_testing(train_val_series, test_series, country, order):
-    """New function for final testing on unseen data"""
-    try:
-        # Train final model on combined train+validation data
-        final_model = ARIMA(train_val_series, order=order).fit()
-        
-        # Make true out-of-sample forecasts
-        forecast = final_model.get_forecast(steps=len(test_series))
-        test_preds = forecast.predicted_mean
-        
-        # Convert to original scale if differenced
-        if order[1] >= 1:  # If differencing was used
-            last_train_value = train_val_series.iloc[-1]
-            test_preds = test_preds.cumsum() + last_train_value
-        
-        test_results = {
-            'actuals': test_series.values.tolist(),
-            'predictions': test_preds.tolist(),
-            'mape': compute_mape(test_series, test_preds),
-            'rmse': compute_rmse(test_series, test_preds)
-        }
-        
-        # Save test results with special filename
-        save_validation_report(
-            country=country,
-            train_years=train_val_series.index,
-            val_years=test_series.index,
-            val_results=test_results,
-            filename="test_results.csv"
-        )
-        return test_results
-    except Exception as e:
-        logging.warning(f"Testing failed for {country}: {str(e)}")
-        return None
-
+    
 def main():
     setup_logging()
     ensure_directories_exist()
@@ -186,7 +226,7 @@ def main():
                 logging.info(f"Processing {country}")
                 print(f"\n🔍 Processing {country}...")
                 
-                # Data loading and cleaning (unchanged)
+                # Data loading and cleaning
                 country_data = df[df['Country Name'] == country]
                 years = [str(y) for y in range(1960, 2024)]
                 raw_series = country_data[years].T.dropna()
@@ -204,10 +244,10 @@ def main():
                     logging.warning(msg)
                     continue
                 
-                # Create splits (new)
+                # Create splits
                 train_series, val_series, test_series = create_splits(cleaned_series)
                 
-                # Stationarity handling (unchanged)
+                # Stationarity handling
                 stationary_series = train_series.diff().dropna()
                 adf_p = adfuller(stationary_series)[1]
                 
@@ -218,13 +258,13 @@ def main():
                         stationary_series = second_diff
                         logging.info("Applied second differencing")
                 
-                # Model fitting (now on training data only)
+                # Model fitting
                 model, order = optimize_arima(stationary_series, country)
                 if not model:
                     logging.error(f"No valid ARIMA model for {country}")
                     continue
                 
-                # Hybrid validation (now with explicit splits)
+                # Hybrid validation
                 val_mape, val_results, train_years, val_years = hybrid_validation(
                     train_series, 
                     val_series if test_series is None else val_series, 
@@ -255,12 +295,20 @@ def main():
                     test_results = run_testing(train_val_series, test_series, country, order)
                     if test_results:
                         print(f"🧪 Test MAPE ({test_series.index[0]}-{test_series.index[-1]}): {test_results['mape']:.2f}%")
+                        plot_testing(
+                            historical=cleaned_series,
+                            train_years=train_series.index,
+                            val_years=val_series.index,
+                            test_years=test_series.index,
+                            test_results=test_results,
+                            country=country
+                        )
                 
-                # Generate and save diagnostics (unchanged)
+                # Generate and save diagnostics
                 diagnose_residuals(model.resid, country)
                 visualize_differencing(cleaned_series, country)
                 
-                # Metrics calculation (now uses training data only)
+                # Metrics calculation
                 try:
                     train_pred = model.predict(start=stationary_series.index[0], 
                                              end=stationary_series.index[-1])
@@ -292,7 +340,7 @@ def main():
                     logging.error(f"Metrics calculation failed for {country}: {str(e)}")
                     raise
                 
-                # Forecasting (unchanged)
+                # Forecasting
                 forecast_steps = 12
                 forecast = model.get_forecast(steps=forecast_steps)
                 forecast_values = forecast.predicted_mean
@@ -308,12 +356,12 @@ def main():
                     'Population': forecast_values
                 })
                 
-                # Save forecast data (unchanged)
+                # Save forecast data
                 forecast_path = f"datas/{country}_forecast.csv"
                 forecast_df.to_csv(forecast_path, index=False)
                 print(f"💾 Saved forecast data: {forecast_path}")
                 
-                # Create forecast plot (unchanged)
+                # Create forecast plot
                 create_forecast_plot(
                     historical=cleaned_series,
                     smoothed=cleaned_series.rolling(5).mean().dropna(),
